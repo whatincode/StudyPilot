@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>StudyPilot Agent — an autonomous study agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* -- soft floral palette (cream / pink / gold / indigo / lavender) -- */
+  --bg:#EBE8E7; --panel:#FFFFFF; --panel2:#F6F1F5; --raised:#EFE7EF;
+  --ink:#2B2740; --mut:#655F7D; --faint:#948DA8; --line:#E2DAE6;
+  --amber:#5E5A9E; --amber-dim:#7A77B926; --amber-vivid:#7A77B9;
+  --teal:#4F7A4B; --teal-dim:#7FA97C33;
+  --coral:#C43D5C; --coral-dim:#EA718633; --coral-vivid:#EA7186;
+  --gold:#916414; --gold-dim:#F2C76E40; --gold-vivid:#F2C76E;
+  --lavender:#714FB0; --lavender-vivid:#BD9DEA;
+  --font-head:'Fraunces',Georgia,serif;
+  --font-body:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 var(--font-body);-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--font-head);margin:0;letter-spacing:.001em;font-weight:600}
+a{color:inherit}
+button,select,input,textarea{font:inherit;color:inherit}
+::selection{background:var(--coral-dim)}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+
+/* ---------- layout shell ---------- */
+.shell{display:flex;min-height:100%}
+.rail{
+  width:74px;flex:none;background:var(--panel);border-right:1px solid var(--line);
+  padding:16px 0 12px;display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding-top:calc(16px + env(safe-area-inset-top,0px));
+  box-shadow:1px 0 0 var(--line), 2px 0 14px #2b274008;
+}
+.rail .mark{width:36px;height:36px;border-radius:10px;background:linear-gradient(155deg,var(--lavender-vivid),var(--amber-vivid));
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-head);font-weight:700;font-size:15px;color:#fff;margin-bottom:18px;
+  box-shadow:0 3px 10px #7a77b94a}
+.rail nav{display:flex;flex-direction:column;gap:2px;width:100%;align-items:center}
+.rail .item{width:56px;padding:8px 2px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:4px;
+  cursor:pointer;color:var(--faint);text-align:center;border:1px solid transparent;transition:color .15s,background .15s}
+.rail .item svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6}
+.rail .item span{font-size:10px;letter-spacing:.01em}
+.rail .item:hover{color:var(--ink);background:var(--raised)}
+.rail .item.on{color:var(--amber);background:var(--amber-dim);border-color:#7a77b940}
+.rail .pulse{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:10px}
+.rail .pulse i{width:8px;height:8px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 3px var(--teal-dim);animation:blink 2.4s ease-in-out infinite}
+.rail .pulse small{font-size:9px;color:var(--faint);writing-mode:vertical-rl;text-orientation:mixed;letter-spacing:.06em}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+
+main{flex:1;min-width:0;padding:22px 26px 60px;max-width:1180px}
+.pagehead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.pagehead h1{font-size:25px;font-weight:600}
+.pagehead .sub{color:var(--mut);font-size:13px;margin-top:4px}
+.student-switch{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:5px;box-shadow:0 1px 2px #2b274008}
+.student-switch button{background:transparent;border:0;padding:6px 11px;border-radius:7px;color:var(--mut);cursor:pointer;font-size:12.5px}
+.student-switch button.on{background:var(--raised);color:var(--amber)}
+
+/* ---------- generic pieces ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:0 1px 2px #2b274006,0 6px 20px #2b274007}
+.panel h3{font-size:13px;font-weight:600;color:var(--mut);text-transform:none;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.full{grid-column:1/-1}
+.mu{color:var(--mut)}
+.faint{color:var(--faint)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 15px;box-shadow:0 1px 2px #2b274006,0 6px 20px #2b274007}
+.kpi small{color:var(--mut);font-size:11.5px}
+.kpi b{display:block;font-family:var(--font-head);font-size:26px;margin-top:3px;font-weight:600}
+.bar{height:7px;background:var(--panel2);border-radius:5px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:5px}
+.row{display:grid;grid-template-columns:1fr 110px 38px;gap:10px;align-items:center;margin:9px 0}
+.row .lbl{font-size:13px}
+.tag{padding:2px 9px;border-radius:20px;font-size:11px;border:1px solid currentColor;white-space:nowrap;font-weight:500}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;flex:none}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-weight:500;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em}
+.scx{overflow-x:auto}
+button.btn{background:var(--raised);border:1px solid var(--line);padding:8px 14px;border-radius:9px;cursor:pointer;font-size:13px;transition:border-color .15s,filter .15s}
+button.btn:hover{border-color:var(--faint)}
+button.btn.p{background:var(--amber);border-color:var(--amber);color:#fff;font-weight:600;box-shadow:0 3px 10px #5e5a9e3d}
+button.btn.p:hover{filter:brightness(1.08)}
+button.btn:disabled{opacity:.45;cursor:default}
+button:focus-visible,.item:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+/* ---------- agent console (hero) ---------- */
+.console{border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:18px;box-shadow:0 1px 2px #2b274006,0 10px 28px #2b27400a;background:
+  radial-gradient(1100px 260px at 15% -20%, #bd9dea22, transparent 60%),
+  radial-gradient(800px 220px at 100% 0%, #f2c76e1c, transparent 55%), var(--panel)}
+.console-top{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:10px}
+.console-top .who{display:flex;align-items:center;gap:10px}
+.console-top .who i{width:9px;height:9px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 4px var(--teal-dim)}
+.console-top h2{font-size:17px}
+.console-body{display:block}
+.decision{padding:18px;border-right:1px solid var(--line)}
+@media(max-width:860px){.decision{border-right:0;border-bottom:1px solid var(--line)}}
+.decision .step{font-size:11px;letter-spacing:.06em;color:var(--amber);font-weight:600;margin-bottom:6px}
+.decision h3{font-family:var(--font-head);font-size:20px;font-weight:600;margin-bottom:6px}
+.decision p{color:var(--mut);font-size:13.5px;margin:0 0 12px}
+.factors{display:flex;flex-direction:column;gap:7px;margin:12px 0}
+.factor{display:grid;grid-template-columns:120px 1fr 40px;gap:9px;align-items:center;font-size:12px}
+.conf{display:inline-flex;align-items:baseline;gap:5px;font-family:var(--font-head);font-size:27px;color:var(--gold);font-weight:600}
+.conf small{font-family:var(--font-body);font-size:11px;color:var(--mut)}
+.log{background:var(--panel2);padding:16px 18px;max-height:340px;overflow-y:auto;font-family:var(--font-mono);font-size:12px;line-height:1.7;border-top:1px solid var(--line)}
+.log .ln{white-space:pre-wrap;word-break:break-word}
+.log .t{color:var(--faint)}
+.log .PERCEIVE{color:var(--lavender)}
+.log .ANALYZE{color:var(--gold)}
+.log .DECIDE{color:var(--amber)}
+.log .ACT{color:var(--teal)}
+.log .step-lbl{font-weight:600;letter-spacing:.02em}
+
+/* ---------- chart bits (svg) ---------- */
+svg text{font-family:var(--font-body)}
+
+/* ---------- quiz ---------- */
+.qopt{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;margin:6px 0;border:1px solid var(--line);border-radius:10px;cursor:pointer;background:var(--panel2)}
+.qopt:hover{border-color:var(--faint)}
+.qopt.sel{border-color:var(--amber);background:var(--amber-dim)}
+.qopt input{margin-top:3px}
+.msg{padding:10px 13px;border-radius:12px;margin:7px 0;max-width:88%;font-size:13.5px}
+.msg.user{background:var(--amber);color:#fff;margin-left:auto}
+.msg.ai{border:1px solid var(--line);background:var(--panel2)}
+
+/* mobile */
+@media(max-width:760px){
+  .shell{flex-direction:column}
+  .rail{width:auto;flex-direction:row;overflow-x:auto;padding:10px;border-right:0;border-bottom:1px solid var(--line)}
+  .rail .mark{margin:0 10px 0 2px}
+  .rail nav{flex-direction:row}
+  .rail .item{width:auto;flex-direction:row;padding:7px 10px}
+  .rail .pulse{display:none}
+  main{padding:16px 14px 50px}
+  .row{grid-template-columns:1fr 84px 34px}
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* =====================================================================
+   StudyPilot Agent — dual-mode build.
+   DEMO MODE (default): everything runs client-side against seeded data,
+   so it never depends on network access, API keys, or a deployed backend.
+   LIVE MODE (optional, via the "Connect" page): the exact same UI talks to
+   a real Supabase project and its Edge Functions (agent-cycle, get-quiz,
+   submit-quiz-attempt, get-assessment-analytics, ai-tutor) — see /backend
+   and /database in the project download. Both modes render through the
+   same page functions; only where the data comes from differs.
+===================================================================== */
+
+/* ---------------- seed data: four demo students ---------------- */
+const QUIZ_BANK = {
+  Loops: [
+    {q:"What will this print?\n\nfor i in range(3):\n    print(i)", opts:["0 1 2","1 2 3","0 1 2 3","3"], a:"0 1 2"},
+    {q:"Which loop is guaranteed to run its body at least once?", opts:["for","while","do-while","none of these"], a:"do-while"},
+    {q:"What does `break` do inside a loop?", opts:["Skips to the next iteration","Exits the loop immediately","Restarts the loop","Pauses the program"], a:"Exits the loop immediately"},
+    {q:"How many times does `for i in range(5):` run?", opts:["4","5","6","Infinite"], a:"5"},
+    {q:"What is an infinite loop usually caused by?", opts:["A missing return statement","A condition that never becomes false","Too many variables","Using range()"], a:"A condition that never becomes false"},
+  ],
+  Functions: [
+    {q:"What keyword defines a function in Python?", opts:["func","def","function","lambda"], a:"def"},
+    {q:"What does a function return if it has no `return` statement?", opts:["0","an error","None","an empty string"], a:"None"},
+    {q:"What is a parameter with a default value called?", opts:["Positional argument","Default parameter","Global variable","Return type"], a:"Default parameter"},
+    {q:"Why use functions instead of repeating code?", opts:["They run faster always","Reusability and clarity","They use less memory always","Python requires it"], a:"Reusability and clarity"},
+  ],
+};
+const STUDENTS = {
+  aarav:{
+    name:"Aarav Mehta", age:"15-18", level:"Grade 10",
+    topics:{
+      Loops:{correct:4,total:10,trend:"declining",mistakes:[{type:"CONCEPTUAL",n:2},{type:"CARELESS",n:1}]},
+      Functions:{correct:7,total:10,trend:"stable",mistakes:[{type:"CALCULATION",n:1}]},
+      "Linear Equations":{correct:8,total:12,trend:"improving",mistakes:[{type:"CARELESS",n:1}]},
+      Recursion:{correct:2,total:6,trend:"insufficient_data",mistakes:[{type:"CONCEPTUAL",n:2}]},
+    },
+    history:[
+      {topic:"Loops",score:4,total:10,daysAgo:1},
+      {topic:"Functions",score:7,total:10,daysAgo:3},
+      {topic:"Linear Equations",score:8,total:12,daysAgo:6},
+      {topic:"Loops",score:5,total:10,daysAgo:9},
+    ],
+  },
+  diya:{
+    name:"Diya Kapoor", age:"11-14", level:"Grade 8",
+    topics:{
+      Loops:{correct:8,total:10,trend:"stable",mistakes:[{type:"CARELESS",n:1}]},
+      Functions:{correct:9,total:10,trend:"improving",mistakes:[]},
+      "Linear Equations":{correct:3,total:10,trend:"declining",mistakes:[{type:"CONCEPTUAL",n:4},{type:"CALCULATION",n:2}]},
+      Recursion:{correct:6,total:8,trend:"stable",mistakes:[{type:"CALCULATION",n:1}]},
+    },
+    history:[
+      {topic:"Linear Equations",score:3,total:10,daysAgo:1},
+      {topic:"Loops",score:8,total:10,daysAgo:2},
+      {topic:"Linear Equations",score:4,total:10,daysAgo:8},
+    ],
+  },
+  rohan:{
+    name:"Rohan Iyer", age:"15-18", level:"Grade 11",
+    topics:{
+      Loops:{correct:9,total:10,trend:"stable",mistakes:[]},
+      Functions:{correct:10,total:10,trend:"stable",mistakes:[]},
+      "Linear Equations":{correct:11,total:12,trend:"stable",mistakes:[{type:"CARELESS",n:1}]},
+      Recursion:{correct:7,total:8,trend:"improving",mistakes:[]},
+    },
+    history:[
+      {topic:"Recursion",score:7,total:8,daysAgo:2},
+      {topic:"Functions",score:10,total:10,daysAgo:5},
+      {topic:"Loops",score:9,total:10,daysAgo:7},
+    ],
+  },
+  sneha:{
+    name:"Sneha Rao", age:"6-10", level:"Grade 5",
+    topics:{
+      Loops:{correct:7,total:10,trend:"improving",mistakes:[{type:"CONCEPTUAL",n:1}]},
+      Functions:{correct:6,total:8,trend:"stable",mistakes:[{type:"CARELESS",n:1}]},
+      "Linear Equations":{correct:7,total:10,trend:"stable",mistakes:[{type:"CALCULATION",n:2}]},
+      Recursion:{correct:0,total:0,trend:"insufficient_data",mistakes:[]},
+    },
+    history:[
+      {topic:"Functions",score:6,total:8,daysAgo:1},
+      {topic:"Loops",score:7,total:10,daysAgo:4},
+    ],
+  },
+};
+
+/* ---------------- the agent: perceive -> analyze -> decide -> act ----------------
+   This is the actual AI-agent model the assignment asks for: a bounded, explainable
+   loop that (1) reads fresh evidence about the student, (2) scores each topic against
+   thresholds, (3) picks and justifies ONE next action with a confidence score, and
+   (4) commits a concrete artifact (a recommendation + a micro-plan). It is re-run
+   every time new evidence arrives (on quiz submit), the way an autonomous agent
+   should be — not just a chatbot answering one prompt at a time. */
+const GAP_T = 0.55, PRACTICE_T = 0.75;
+function statusFor(acc){ if(acc<GAP_T) return "knowledge_gap"; if(acc<PRACTICE_T) return "needs_practice"; return "strong"; }
+const STAT_LABEL = {knowledge_gap:["Needs work","var(--coral)"], needs_practice:["Needs practice","var(--gold)"], strong:["Strong","var(--teal)"], insufficient_data:["Not enough data","var(--faint)"]};
+const TREND_LABEL = {improving:["Improving","var(--teal)"],declining:["Declining","var(--coral)"],stable:["Stable","var(--gold)"],insufficient_data:["No trend yet","var(--faint)"]};
+const MISTAKE_COLOR = {CONCEPTUAL:"var(--coral)",CALCULATION:"var(--gold)",CARELESS:"var(--lavender)",insufficient:"var(--faint)"};
+const MISTAKE_LABEL = {CONCEPTUAL:"Misunderstood the concept",CALCULATION:"Calculation error",CARELESS:"Careless slip",insufficient:"Not enough data"};
+function mistakeLabel(t){ return MISTAKE_LABEL[t] || t; }
+// Plain-language labels for factor keys that come straight from the backend (e.g. "accuracy_gap").
+// Demo mode already uses friendly names ("accuracy", "trend", ...); this covers the live-backend names too.
+const FACTOR_LABEL = {
+  accuracy_gap: "How far below target",
+  recent_mistakes: "Recent mistakes",
+  accuracy_trend: "Recent trend",
+  accuracy: "Accuracy",
+  trend: "Trend",
+  "recorded mistakes": "Recorded mistakes",
+};
+function factorLabel(f){ return FACTOR_LABEL[f] || f; }
+
+function analyze(student){
+  const topics = Object.entries(student.topics).map(([topic,t])=>{
+    const acc = t.total? t.correct/t.total : null;
+    const status = acc==null ? "insufficient_data" : statusFor(acc);
+    const mistakeCount = t.mistakes.reduce((s,m)=>s+m.n,0);
+    return {topic, acc, accPct: acc==null?null:Math.round(acc*100), status, trend:t.trend, correct:t.correct, incorrect:t.total-t.correct, total:t.total, mistakeCount, mistakes:t.mistakes};
+  });
+  return topics;
+}
+
+/* Decide: score every topic with weighted factors, pick the highest priority one. */
+function decide(topics){
+  const scored = topics.filter(t=>t.total>0).map(t=>{
+    const gapW = t.status==="knowledge_gap"?1:t.status==="needs_practice"?.55:.1;
+    const trendW = t.trend==="declining"?1:t.trend==="stable"?.4:t.trend==="improving"?.15:.3;
+    const mistakeW = Math.min(1, t.mistakeCount/4);
+    const score = gapW*0.5 + trendW*0.3 + mistakeW*0.2;
+    return {...t, score,
+      factors:[
+        {factor:"accuracy", value:t.accPct+"%", weight:gapW},
+        {factor:"trend", value:(TREND_LABEL[t.trend]||[t.trend])[0], weight:trendW},
+        {factor:"recorded mistakes", value:t.mistakeCount, weight:mistakeW},
+      ]};
+  }).sort((a,b)=>b.score-a.score);
+  return scored[0] || null;
+}
+
+function act(pick){
+  if(!pick) return null;
+  const priority = pick.score>0.6?"high":pick.score>0.35?"medium":"low";
+  const confidence = Math.round(Math.min(96, 58 + pick.score*40));
+  const reasonBits = [];
+  if(pick.status==="knowledge_gap") reasonBits.push(`your accuracy on ${pick.topic} is ${pick.accPct}%, well below where it needs to be`);
+  else if(pick.status==="needs_practice") reasonBits.push(`your accuracy on ${pick.topic} is ${pick.accPct}%, close but not quite solid yet`);
+  if(pick.trend==="declining") reasonBits.push("your recent attempts are trending down");
+  if(pick.mistakeCount>0) reasonBits.push(`${pick.mistakeCount} mistake${pick.mistakeCount===1?"":"s"} logged here recently`);
+  const reason = reasonBits.length? "Recommended because "+reasonBits.join("; ")+"." : `${pick.topic} is the topic you've practised least so far.`;
+  return {
+    topic:pick.topic, priority, confidence, reason, factors:pick.factors,
+    plan:[`3-question warm-up quiz on ${pick.topic}`, `Socratic tutor session (age-adapted) on the weakest sub-skill`, `Re-check accuracy after the next attempt`],
+  };
+}
+
+function runAgentCycle(student, trigger){
+  const topics = analyze(student);
+  const pick = decide(topics);
+  const action = act(pick);
+  const time = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const entries = [];
+  entries.push({t:time, step:"PERCEIVE", text: trigger==="init" ? `loaded ${topics.filter(t=>t.total>0).length} topic${topics.filter(t=>t.total>0).length===1?"":"s"} of evidence for ${student.name}` : trigger});
+  entries.push({t:time, step:"ANALYZE", text: topics.filter(t=>t.total>0).map(t=>`${t.topic} → ${t.accPct}% (${(STAT_LABEL[t.status]||[t.status])[0].toLowerCase()}, ${(TREND_LABEL[t.trend]||[t.trend])[0].toLowerCase()})`).join("  ·  ")});
+  if(action){
+    entries.push({t:time, step:"DECIDE", text:`selected "${action.topic}" — priority ${action.priority}, confidence ${action.confidence}% (score beat ${topics.filter(x=>x.total>0).length-1} other candidate${topics.filter(x=>x.total>0).length-1===1?"":"s"})`});
+    entries.push({t:time, step:"ACT", text:`wrote recommendation for "${action.topic}" and queued a ${action.plan.length}-step micro-plan`});
+  }
+  return {topics, action, entries};
+}
+
+/* ---------------- socratic tutor (deterministic stand-in for the LLM edge function) ---------------- */
+const AGE_VOICE = {
+  "6-10":"very short sentences and a friendly, playful example",
+  "11-14":"simple words and a concrete everyday example",
+  "15-18":"clear language with an exam-style example",
+  "adult":"concise, technically precise language",
+};
+function tutorReply(student, topic, mode, turn){
+  const voice = AGE_VOICE[student.age] || AGE_VOICE.adult;
+  const bank = {
+    Loops:{
+      hint:["Before I tell you — what does the loop variable `i` hold on the very first pass?","Good. Now, does `range(3)` include the number 3 itself? Try counting it out on paper.","You're close. What statement would you use to stop the loop early, before it finishes naturally?"],
+      explain:[`A loop repeats a block of code. In Python, "for i in range(3):" runs the body 3 times, with i = 0, 1, 2 — using ${voice}, think of it like taking 3 steps and calling out the step number each time.`],
+    },
+    Functions:{
+      hint:["What do you think happens to a variable created *inside* a function once the function finishes?","Right idea. Now — if a function has no `return`, what value does Python hand back by default?","Try tracing it: what gets passed in first, the parameter or the argument?"],
+      explain:[`A function is a named, reusable block of code. You "call" it with arguments, it runs its body, and it can hand a value back with "return" — using ${voice}, it's like a small machine: you feed it inputs, it gives you an output.`],
+    },
+  };
+  const set = bank[topic] || bank.Loops;
+  const list = mode==="explain" ? set.explain : set.hint;
+  return list[Math.min(turn, list.length-1)];
+}
+
+/* ---------------- tiny render helpers ---------------- */
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const bar = (p,c='var(--amber)') => `<div class="bar"><i style="width:${Math.max(0,Math.min(100,p))}%;background:${c}"></i></div>`;
+const tag = (t,c) => `<span class="tag" style="color:${c}">${esc(t)}</span>`;
+const dot = c => `<i class="dot" style="background:${c}"></i>`;
+function panel(title, body, extra=""){ return `<section class="panel"><h3><span>${title}</span>${extra}</h3>${body}</section>`; }
+function fullpanel(title, body, extra=""){ return `<div class="full">${panel(title, body, extra)}</div>`; }
+
+function barsChart(items, unit='%'){
+  const max = Math.max(1, ...items.map(x=>x[1]));
+  const n = items.length, w = Math.max(320, n*62), c = w/n;
+  return `<div class="scx"><svg viewBox="0 0 ${w} 180" width="100%" style="min-width:${n*50}px">
+    ${[0,.5,1].map(f=>`<line x1="0" x2="${w}" y1="${150-f*120}" y2="${150-f*120}" stroke="var(--line)"/>`).join('')}
+    ${items.map((x,i)=>{const h=Math.max(0,x[1])/max*120, cx=c*i+c/2;
+      return `<rect x="${cx-15}" y="${150-h}" width="30" height="${h}" rx="4" fill="${x[2]||'var(--amber)'}"><title>${esc(x[0])}</title></rect>
+      <text x="${cx}" y="${144-h}" text-anchor="middle" fill="var(--ink)" font-size="11">${x[1]}${unit}</text>
+      <text x="${cx}" y="167" text-anchor="middle" fill="var(--mut)" font-size="10">${esc(x[0].slice(0,11))}</text>`;
+    }).join('')}
+  </svg></div>`;
+}
+function pieChart(data){
+  const total = data.reduce((a,x)=>a+x[1],0) || 1;
+  let a0 = -Math.PI/2, paths='';
+  data.forEach(x=>{ if(!x[1]) return; const a1=a0+2*Math.PI*x[1]/total;
+    paths += x[1]===total ? `<circle cx="60" cy="60" r="50" fill="${x[2]}"/>` :
+      `<path d="M60 60L${60+50*Math.cos(a0)} ${60+50*Math.sin(a0)}A50 50 0 ${a1-a0>Math.PI?1:0} 1 ${60+50*Math.cos(a1)} ${60+50*Math.sin(a1)}Z" fill="${x[2]}"/>`;
+    a0=a1; });
+  return `<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+    <svg viewBox="0 0 120 120" width="118" height="118">${paths}<circle cx="60" cy="60" r="27" fill="var(--panel)"/></svg>
+    <div>${data.map(x=>`<div style="font-size:12.5px;margin:2px 0">${dot(x[2])}${esc(x[0])} <b>${x[1]}</b> <span class="mu">${Math.round(100*x[1]/total)}%</span></div>`).join('')}</div>
+  </div>`;
+}
+
+/* ---------------- live backend (optional) ----------------
+   Talks to the real Supabase project + Edge Functions described in the
+   project's /backend and /database folders. Nothing here runs unless the
+   person explicitly connects on the "Connect" page — demo mode never
+   touches the network. */
+let LIVE = {mode:'demo', url:'', anon:'', sb:null, user:null, authMode:'in', busy:false, error:null};
+const LS_URL='sp_backend_url', LS_ANON='sp_backend_anon';
+
+async function callFn(name, {method='GET', query='', body}={}) {
+  const {data} = await LIVE.sb.auth.getSession();
+  const token = data && data.session && data.session.access_token;
+  if (!token) throw new Error('Your session has expired. Please sign in again.');
+  let r;
+  try {
+    r = await fetch(`${LIVE.url}/functions/v1/${name}${query}`, {
+      method, headers: {Authorization:'Bearer '+token, apikey:LIVE.anon, ...(body?{'Content-Type':'application/json'}:{})},
+      body: body?JSON.stringify(body):undefined,
+    });
+  } catch(e) { throw new Error(`Could not reach the server (${name}). Check your connection.`); }
+  let j=null; try{ j = await r.json(); } catch(e){}
+  if (!r.ok) throw new Error((j&&j.error) || `Request failed (${r.status}).`);
+  return j;
+}
+
+/* Normalize a live get-assessment-analytics response into the same shape
+   analyze() produces for demo mode, so every page function works unchanged. */
+function normalizeLiveTopics(anData) {
+  const gapByTopic = new Map((anData.knowledgeGaps||[]).map(g=>[g.topic, g.status]));
+  const mistakesByTopic = new Map();
+  (anData.mistakes||[]).forEach(m=>{
+    const cur = mistakesByTopic.get(m.topic) || {count:0, byType:[]};
+    cur.count += m.count||1; cur.byType.push({type:m.type, n:m.count||1});
+    mistakesByTopic.set(m.topic, cur);
+  });
+  return (anData.topicPerformance||[]).map(t=>{
+    const status = gapByTopic.get(t.topic) || (t.accuracy>=75?'strong':t.accuracy>=55?'needs_practice':'knowledge_gap');
+    const mx = mistakesByTopic.get(t.topic) || {count:0, byType:[]};
+    return {topic:t.topic, acc:t.accuracy/100, accPct:t.accuracy, status, trend:t.trend,
+      correct:t.correct, incorrect:t.incorrect, total:t.attempts, mistakeCount:mx.count, mistakes:mx.byType};
+  });
+}
+/* Normalize a live agent-cycle trace into the same shape act()/runAgentCycle() produce.
+   The tailored plan (LLM-written when the orchestrator's DECIDE step used the LLM, or a
+   template fallback otherwise) lives on trace.action.plan, NOT trace.decision — decision only
+   carries the topic/priority/confidence/reason/factors. Take the whole trace so both are visible. */
+function normalizeLiveAction(trace) {
+  const decision = trace && trace.decision;
+  if (!decision) return null;
+  const action = trace.action || {};
+  return {topic:decision.topic, priority:decision.priority, confidence:decision.confidence,
+    reason:decision.reason, factors:decision.factors, source:decision.source, alternates:decision.alternates||[],
+    plan:(action.plan && action.plan.length ? action.plan : ['Short warm-up quiz','Socratic tutor session','Re-check accuracy after the next attempt']),
+    planSource: action.plan_source || 'template'};
+}
+function pushLiveLog(trace) {
+  const time = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  AGENT_LOG = (trace.log||[]).map(e=>({t:time, step:e.step, text:e.text})).concat(AGENT_LOG).slice(0,60);
+}
+
+async function loadLiveTopicsAndAgent(trigger) {
+  const [anData, trace] = await Promise.all([
+    callFn('get-assessment-analytics'),
+    callFn('agent-cycle', {method:'POST', body:{trigger}}),
+  ]);
+  LAST_TOPICS = normalizeLiveTopics(anData);
+  LAST_ACTION = normalizeLiveAction(trace);
+  LIVE_HISTORY = ((anData.overall&&anData.overall.attemptHistory)||[]).map(h=>({
+    topic:h.topic, score:h.score, total:h.total,
+    daysAgo: Math.max(0, Math.floor((Date.now()-new Date(h.completedAt).getTime())/86400000)),
+  }));
+  pushLiveLog(trace);
+}
+
+function persistBackendConfig(url, anon) {
+  try { localStorage.setItem(LS_URL, url); localStorage.setItem(LS_ANON, anon); } catch(e) {}
+}
+function clearBackendConfig() {
+  try { localStorage.removeItem(LS_URL); localStorage.removeItem(LS_ANON); } catch(e) {}
+}
+async function connectBackend() {
+  const url = (document.getElementById('be-url')||{}).value?.trim();
+  const anon = (document.getElementById('be-anon')||{}).value?.trim();
+  LIVE.error = null;
+  if (!url || !anon) { LIVE.error = 'Enter both the project URL and the anon (public) key.'; render(); return; }
+  if (!window.supabase || !window.supabase.createClient) { LIVE.error = 'Could not load supabase-js from the CDN. Check your connection.'; render(); return; }
+  LIVE.url = url.replace(/\/$/,''); LIVE.anon = anon;
+  LIVE.sb = window.supabase.createClient(LIVE.url, LIVE.anon);
+  persistBackendConfig(LIVE.url, LIVE.anon);
+  LIVE.sb.auth.onAuthStateChange(ev=>{ if (ev==='SIGNED_OUT') { LIVE.user=null; LIVE.mode='demo'; render(); } });
+  render();
+}
+function disconnectBackend() {
+  if (LIVE.sb) LIVE.sb.auth.signOut().catch(()=>{});
+  clearBackendConfig();
+  LIVE = {mode:'demo', url:'', anon:'', sb:null, user:null, authMode:'in', busy:false, error:null};
+  bootStudent(currentId, false); view='agent'; render();
+}
+async function ensureLiveProfile(name) {
+  const {data} = await LIVE.sb.from('profiles').select('id').eq('id', LIVE.user.id).maybeSingle();
+  if (!data) await LIVE.sb.from('profiles').insert({id:LIVE.user.id, full_name:name||null});
+}
+async function afterLiveLogin(u) {
+  LIVE.user = {id:u.id, email:u.email, name:(u.user_metadata&&u.user_metadata.full_name)||u.email};
+  LIVE.mode = 'live';
+  try { await ensureLiveProfile(LIVE.user.name===LIVE.user.email?null:LIVE.user.name); } catch(e){}
+  AGENT_LOG = []; LAST_TOPICS = []; LAST_ACTION = null; LIVE_HISTORY = [];
+  QUIZ = {phase:'list', topic:null, qs:[], ans:{}, idx:0, result:null};
+  TUTOR = {topic:null, mode:'hint', turn:0, msgs:[]};
+  view = 'agent'; render();
+  try { await loadLiveTopicsAndAgent('init'); } catch(e) { LIVE.error = e.message; }
+  render();
+}
+async function liveAuth() {
+  const email = (document.getElementById('be-em')||{}).value?.trim().toLowerCase();
+  const pass = (document.getElementById('be-pw')||{}).value;
+  if (!email || !pass) { LIVE.error='Enter your email and password.'; render(); return; }
+  LIVE.busy = true; LIVE.error = null; render();
+  try {
+    if (LIVE.authMode==='in') {
+      const {data, error} = await LIVE.sb.auth.signInWithPassword({email, password:pass});
+      if (error) throw error;
+      LIVE.busy=false; await afterLiveLogin(data.user);
+    } else {
+      const {data, error} = await LIVE.sb.auth.signUp({email, password:pass});
+      if (error) throw error;
+      LIVE.busy=false;
+      if (data.session) await afterLiveLogin(data.user);
+      else { LIVE.authMode='in'; LIVE.error='Account created — check your email to confirm, then sign in.'; render(); }
+    }
+  } catch(e) { LIVE.busy=false; LIVE.error = e.message || 'Something went wrong.'; render(); }
+}
+async function tryRestoreLiveSession() {
+  try {
+    const stored_url = localStorage.getItem(LS_URL), stored_anon = localStorage.getItem(LS_ANON);
+    if (!stored_url || !stored_anon || !window.supabase) return;
+    LIVE.url = stored_url; LIVE.anon = stored_anon;
+    LIVE.sb = window.supabase.createClient(LIVE.url, LIVE.anon);
+    LIVE.sb.auth.onAuthStateChange(ev=>{ if (ev==='SIGNED_OUT') { LIVE.user=null; LIVE.mode='demo'; render(); } });
+    const {data} = await LIVE.sb.auth.getSession();
+    if (data && data.session) await afterLiveLogin(data.session.user);
+  } catch(e) { /* silently fall back to demo mode */ }
+}
+
+/* ---------------- app state ---------------- */
+let currentId = 'aarav';
+let view = 'agent';
+let AGENT_LOG = [];
+let LAST_ACTION = null;
+let TUTOR = {topic:null, mode:'hint', turn:0, msgs:[]};
+let QUIZ = {phase:'list', topic:null, qs:[], ans:{}, idx:0, result:null};
+
+function bootStudent(id, silent){
+  currentId = id;
+  const s = STUDENTS[id];
+  const {topics, action, entries} = runAgentCycle(s, silent?`switched active student to ${s.name}`:"init");
+  LAST_TOPICS = topics; LAST_ACTION = action;
+  AGENT_LOG = entries.concat(AGENT_LOG).slice(0,60);
+  TUTOR = {topic: action?action.topic:null, mode:'hint', turn:0, msgs:[]};
+  QUIZ = {phase:'list', topic:null, qs:[], ans:{}, idx:0, result:null};
+}
+let LAST_TOPICS = [];
+let LIVE_HISTORY = [];
+bootStudent(currentId, false);
+
+/* effectiveMode is 'live' only once someone is actually signed in to a
+   connected backend; otherwise everything (including the Connect page
+   itself) runs against the demo data so the app is never blank. */
+const effectiveMode = () => (LIVE.mode==='live' && LIVE.user) ? 'live' : 'demo';
+const personName = () => effectiveMode()==='live' ? LIVE.user.name : STUDENTS[currentId].name;
+const personLevel = () => effectiveMode()==='live' ? LIVE.user.email : STUDENTS[currentId].level;
+const currentHistory = () => effectiveMode()==='live' ? LIVE_HISTORY : STUDENTS[currentId].history;
+
+/* ---------------- pages ---------------- */
+const NAV = [
+  ['agent','Agent', 'M4 4h16v6H4zM4 14h10v6H4zM17 14h3v6h-3z'],
+  ['dash','Dashboard', 'M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10'],
+  ['quiz','Quizzes', 'M9 11l2 2 4-4M4 4h16v16H4z'],
+  ['gaps','Weak spots', 'M12 3l9 16H3z'],
+  ['tutor','AI Tutor', 'M4 4h16v11H8l-4 4z'],
+  ['settings','Connect', 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09a1.7 1.7 0 001.55-1 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34H9a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.55 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87V9a1.7 1.7 0 001.55 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.55 1z'],
+];
+
+function studentPicker(){
+  if (effectiveMode()==='live') {
+    return `<div class="student-switch"><button class="on" style="cursor:default">Live · ${esc(LIVE.user.email)}</button><button onclick="disconnectBackend()">Log out</button></div>`;
+  }
+  return `<div class="student-switch">${Object.entries(STUDENTS).map(([id,s])=>
+    `<button class="${id===currentId?'on':''}" onclick="switchStudent('${id}')">${esc(s.name.split(' ')[0])}</button>`).join('')}
+    <button onclick="go('settings')" title="Connect to a real backend">⇄</button></div>`;
+}
+
+function agentPage(){
+  const a = LAST_ACTION, topics = LAST_TOPICS.filter(t=>t.total>0);
+  const rows = topics.map(t=>`<div class="factor"><span>${esc(t.topic)}</span>${bar(t.accPct, (STAT_LABEL[t.status]||[0,'var(--faint)'])[1])}<b>${t.accPct}%</b></div>`).join('');
+  return `
+  <div class="console">
+    <div class="console-top">
+      <div class="who"><i></i><div><h2>Study Agent — live</h2><span class="mu" style="font-size:12px">Watching ${esc(personName())}'s quiz evidence and deciding what to do next</span></div></div>
+      <button class="btn p" onclick="reRunAgent()">Re-run cycle</button>
+    </div>
+    <div class="console-body">
+      <div class="decision">
+        ${a ? `
+        <div class="step">SUGGESTED FOCUS</div>
+        <h3>${esc(a.topic)}</h3>
+        <p>${esc(a.reason)}</p>
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:6px">
+          ${tag(a.priority+' priority', a.priority==='high'?'var(--coral)':a.priority==='medium'?'var(--gold)':'var(--teal)')}
+          <span class="conf">${a.confidence}<small>% confidence</small></span>
+        </div>
+        <div class="factors">${a.factors.map(f=>`<div class="factor"><span class="mu">${esc(factorLabel(f.factor))}</span>${bar(Math.round(f.weight*100),'var(--amber)')}<b>${Math.round(f.weight*100)}%</b></div>`).join('')}</div>
+        <div style="margin-top:8px">
+          <div class="mu" style="font-size:11.5px;margin-bottom:6px">SUGGESTED PLAN${a.planSource==='llm'?' · tailored by AI':''}</div>
+          <ol style="margin:0;padding-left:18px;font-size:13px">${a.plan.map(p=>`<li style="margin:4px 0">${esc(p)}</li>`).join('')}</ol>
+        </div>
+        ${a.alternates && a.alternates.length ? `<div class="mu" style="font-size:11px;margin-top:8px">Also considered: ${a.alternates.map(esc).join(', ')}</div>` : ''}
+        <div style="margin-top:12px"><button class="btn" onclick="go('tutor')">Open tutor on this topic →</button></div>
+        ` : `<p class="mu">No quiz evidence yet for this student.</p>`}
+      </div>
+    </div>
+  </div>
+  <div class="grid">
+    ${panel('How the agent scores every topic', rows || '<p class="mu">No data.</p>')}
+    ${panel('How this works', `<p class="mu" style="font-size:13px;line-height:1.7">
+      It looks at every quiz you've taken — which topics you got right, which you missed, and whether you're improving.<br><br>
+      It picks the one topic that needs your attention most right now, and shows you how sure it is.<br><br>
+      Then it suggests a short, concrete plan: a quick warm-up quiz, a tutoring session on the tricky part, and a re-check once you've had another go.</p>`)}
+  </div>`;
+}
+
+function dashPage(){
+  const topics = LAST_TOPICS.filter(t=>t.total>0);
+  const totalQ = topics.reduce((s,t)=>s+t.total,0), totalC = topics.reduce((s,t)=>s+t.correct,0);
+  const mix = ['knowledge_gap','needs_practice','strong'].map(s=>[STAT_LABEL[s][0], topics.filter(t=>t.status===s).length, STAT_LABEL[s][1]]);
+  const hist = currentHistory();
+  return `
+  <div class="kpis">
+    ${kpi('Overall accuracy', totalQ?Math.round(100*totalC/totalQ)+'%':'—')}
+    ${kpi('Topics tracked', topics.length)}
+    ${kpi('Questions answered', totalQ)}
+    ${kpi('Open recommendation', LAST_ACTION?LAST_ACTION.topic:'—')}
+  </div>
+  <div class="grid">
+    ${panel('Accuracy by topic', barsChart(topics.map(t=>[t.topic,t.accPct,(STAT_LABEL[t.status]||[0,'var(--amber)'])[1]])))}
+    ${panel('Topic health', pieChart(mix))}
+    ${panel('Correct vs wrong', pieChart([['Correct',totalC,'var(--teal)'],['Wrong',totalQ-totalC,'var(--coral)']]))}
+    ${fullpanel('Recent attempts', hist.map(h=>`<div class="row"><span class="lbl">${esc(h.topic)}</span><span class="mu" style="font-size:12px">${h.daysAgo} day${h.daysAgo===1?'':'s'} ago</span><b>${h.score}/${h.total}</b></div>`).join(''))}
+  </div>`;
+}
+function kpi(label,val){ return `<div class="kpi"><small>${label}</small><b>${val}</b></div>`; }
+
+function gapsPage(){
+  const topics = LAST_TOPICS.filter(t=>t.total>0);
+  const groups = ['knowledge_gap','needs_practice','strong'];
+  const withMistakes = topics.filter(t=>t.mistakes.length);
+  const byType = {};
+  withMistakes.forEach(t=>t.mistakes.forEach(m=>byType[m.type]=(byType[m.type]||0)+m.n));
+  return `<div class="grid">
+    ${panel('Where you stand', pieChart(groups.map(s=>[STAT_LABEL[s][0], topics.filter(t=>t.status===s).length, STAT_LABEL[s][1]])))}
+    ${groups.map(s=>panel(dot(STAT_LABEL[s][1])+STAT_LABEL[s][0], topics.filter(t=>t.status===s).map(t=>`<div style="margin:7px 0;font-size:13px"><b>${esc(t.topic)}</b> <span class="mu">${t.accPct}% · ${t.total} questions · ${t.mistakeCount} mistakes</span></div>`).join('') || '<span class="mu">None</span>')).join('')}
+    ${fullpanel('Mistake log', withMistakes.length ? `<div class="scx"><table><tr><th>Topic</th><th>Type</th><th>Count</th></tr>${withMistakes.flatMap(t=>t.mistakes.map(m=>`<tr><td>${esc(t.topic)}</td><td>${tag(mistakeLabel(m.type),MISTAKE_COLOR[m.type])}</td><td>${m.n}</td></tr>`)).join('')}</table></div>` : '<p class="mu">No mistakes recorded yet.</p>')}
+  </div>`;
+}
+
+function quizPage(){
+  if(QUIZ.phase==='loading') return panel('Available quizzes','<p class="mu">Loading quizzes…</p>');
+  if(QUIZ.phase==='list'){
+    if(!QUIZ.list.length) return panel('Available quizzes','<p class="mu">No quizzes available yet.</p>');
+    return panel('Available quizzes', QUIZ.list.map((x,i)=>`<div class="row" style="grid-template-columns:1fr auto"><span class="lbl"><b>${esc(x.topic)}</b></span><button class="btn p" onclick="startQuiz(${i})">Start</button></div>`).join(''));
+  }
+  if(QUIZ.phase==='opening') return panel((QUIZ.topic||'')+' quiz', '<p class="mu">Loading questions…</p>');
+  if(QUIZ.phase==='taking' || QUIZ.phase==='submitting'){
+    const qs = QUIZ.qs, done = Object.keys(QUIZ.ans).length, busy = QUIZ.phase==='submitting';
+    return panel(esc(QUIZ.topic)+' quiz', qs.map((q,i)=>`
+      <div style="margin:14px 0">
+        <b>${i+1}.</b> <span style="white-space:pre-wrap">${esc(q.q)}</span>
+        ${q.opts.map(o=>`<label class="qopt ${QUIZ.ans[i]===o?'sel':''}"><input type="radio" name="q${i}" ${QUIZ.ans[i]===o?'checked':''} ${busy?'disabled':''} onchange="pickAns(${i},'${o.replace(/'/g,"\\'")}')"><span>${esc(o)}</span></label>`).join('')}
+      </div>`).join('') +
+      (QUIZ.error?`<p role="alert" style="color:var(--coral)">${esc(QUIZ.error)}</p>`:'') +
+      `<p class="mu">${done} of ${qs.length} answered</p><button class="btn p" ${busy||done<qs.length?'disabled':''} onclick="submitQuiz()">${busy?'Submitting…':'Submit quiz'}</button> <button class="btn" ${busy?'disabled':''} onclick="go('quiz')">Cancel</button>`);
+  }
+  if(QUIZ.phase==='result'){
+    const r = QUIZ.result;
+    return `<div class="grid">
+      ${fullpanel('Quiz submitted', `<div class="kpis" style="margin-top:0"><div class="kpi"><small>Score</small><b>${r.score}/${r.total}</b></div><div class="kpi"><small>Accuracy</small><b>${r.pct}%</b></div></div>
+      <p class="mu" style="font-size:13px">The agent has re-run its cycle with this new evidence — check the Agent page for the updated decision.</p>
+      <button class="btn p" onclick="go('agent')">See agent's updated decision</button> <button class="btn" onclick="go('quiz')">Take another quiz</button>`)}
+      ${fullpanel('Your answers', r.rows.map((x,i)=>`<div style="margin:7px 0;font-size:13px">${dot(x.correct?'var(--teal)':'var(--coral)')}<b>${i+1}.</b> ${esc(x.q)}<br><span class="mu">Your answer: ${esc(x.given)}</span> ${tag(x.correct?'Correct':'Incorrect', x.correct?'var(--teal)':'var(--coral)')}</div>`).join(''))}
+    </div>`;
+  }
+}
+async function loadLiveQuizList(){
+  QUIZ = {phase:'loading', topic:null, qs:[], ans:{}, list:[], error:null, result:null};
+  render();
+  try {
+    const {data, error} = await LIVE.sb.from('quizzes').select('id, topic, difficulty').order('topic');
+    if (error) throw error;
+    QUIZ.list = (data||[]).map(q=>({topic:q.topic, id:q.id, difficulty:q.difficulty}));
+    QUIZ.phase = 'list';
+  } catch(e) { QUIZ.phase='list'; QUIZ.error = e.message; }
+  render();
+}
+function startQuiz(i){
+  const item = QUIZ.list[i]; if(!item) return;
+  if (effectiveMode()==='demo') {
+    QUIZ = {phase:'taking', topic:item.topic, list:QUIZ.list,
+      qs: QUIZ_BANK[item.topic].map((q,idx)=>({id:'q'+idx, q:q.q, opts:q.opts, a:q.a})),
+      ans:{}, error:null, result:null};
+    render(); return;
+  }
+  QUIZ = {phase:'opening', topic:item.topic, list:QUIZ.list, id:item.id, qs:[], ans:{}, error:null, result:null};
+  render();
+  (async ()=>{
+    try {
+      const r = await callFn('get-quiz', {query:'?quiz_id='+encodeURIComponent(item.id)});
+      const norm = o => { if(typeof o==='string'){ try{o=JSON.parse(o)}catch(e){o=[]} } return Array.isArray(o)?o.map(String):[]; };
+      QUIZ.qs = (r.questions||[]).map(x=>({id:x.id, q:x.question, opts:norm(x.options)}));
+      QUIZ.phase = QUIZ.qs.length ? 'taking' : 'list';
+      if(!QUIZ.qs.length) QUIZ.error = 'This quiz has no questions yet.';
+    } catch(e) { QUIZ.phase='list'; QUIZ.error = e.message; }
+    render();
+  })();
+}
+function pickAns(i,val){ QUIZ.ans[i]=val; render(); }
+function submitQuiz(){
+  if (effectiveMode()==='demo') {
+    const rows = QUIZ.qs.map((q,i)=>({q:q.q, given:QUIZ.ans[i], correct:QUIZ.ans[i]===q.a}));
+    const score = rows.filter(r=>r.correct).length, total = rows.length;
+    QUIZ.result = {score, total, pct:Math.round(100*score/total), rows};
+    QUIZ.phase = 'result';
+    const s = STUDENTS[currentId];
+    const t = s.topics[QUIZ.topic];
+    t.correct += score; t.total += total;
+    t.trend = score/total >= 0.7 ? 'improving' : score/total < 0.5 ? 'declining' : 'stable';
+    if(total-score>0) t.mistakes = t.mistakes.concat([{type:'CONCEPTUAL', n: total-score}]);
+    s.history.unshift({topic:QUIZ.topic, score, total, daysAgo:0});
+    const {topics, action, entries} = runAgentCycle(s, `new quiz attempt ingested: ${QUIZ.topic} ${score}/${total}`);
+    LAST_TOPICS = topics; LAST_ACTION = action;
+    AGENT_LOG = entries.concat(AGENT_LOG).slice(0,60);
+    render();
+    return;
+  }
+  QUIZ.phase = 'submitting'; QUIZ.error = null; render();
+  (async ()=>{
+    try {
+      // pickAns keys answers by question index (not id), so map back to question_id here
+      const body = {quiz_id: QUIZ.id, answers: QUIZ.qs.map((x,i)=>({question_id:x.id, selected_answer:QUIZ.ans[i]}))};
+      const r = await callFn('submit-quiz-attempt', {method:'POST', body});
+      const qText = id => (QUIZ.qs.find(z=>z.id===id)||{}).q || '(question)';
+      QUIZ.result = {score:r.score, total:r.total, pct:r.accuracy_percent,
+        rows:(r.results||[]).map(x=>({q:qText(x.question_id), given:x.selected_answer, correct:x.correct}))};
+      QUIZ.phase = 'result';
+      if (r.agent) { LAST_ACTION = normalizeLiveAction(r.agent); pushLiveLog(r.agent); }
+      render();
+      try { const anData = await callFn('get-assessment-analytics'); LAST_TOPICS = normalizeLiveTopics(anData);
+        LIVE_HISTORY = ((anData.overall&&anData.overall.attemptHistory)||[]).map(h=>({topic:h.topic, score:h.score, total:h.total,
+          daysAgo: Math.max(0, Math.floor((Date.now()-new Date(h.completedAt).getTime())/86400000))})); } catch(e){}
+      render();
+    } catch(e) { QUIZ.phase='taking'; QUIZ.error = e.message; render(); }
+  })();
+}
+
+function tutorPage(){
+  const topics = effectiveMode()==='live' ? LAST_TOPICS.filter(t=>t.total>0) : LAST_TOPICS.filter(t=>t.total>0 && QUIZ_BANK[t.topic]);
+  if(!TUTOR.topic) TUTOR.topic = topics[0]?.topic;
+  const live = effectiveMode()==='live';
+  return `
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    ${topics.map(t=>`<button class="btn ${t.topic===TUTOR.topic?'p':''}" onclick="setTutorTopic('${t.topic}')">${esc(t.topic)}</button>`).join('')}
+    <span style="flex:1"></span>
+    <button class="btn ${TUTOR.mode==='hint'?'p':''}" onclick="setTutorMode('hint')">Socratic (hints)</button>
+    <button class="btn ${TUTOR.mode==='explain'?'p':''}" onclick="setTutorMode('explain')">Explain</button>
+  </div>
+  ${panel('AI Tutor — adapted to ' + esc(personLevel()), `
+    <div>${TUTOR.msgs.length? TUTOR.msgs.map(m=>`<div class="msg ${m.role==='user'?'user':'ai'}">${esc(m.text)}</div>`).join('') : `<p class="mu">Ask about ${esc(TUTOR.topic||'a topic')}, or just press Send to get the tutor's first hint.</p>`}${TUTOR.busy?'<p class="mu">Tutor is thinking…</p>':''}</div>
+    ${TUTOR.error?`<p role="alert" style="color:var(--coral)">${esc(TUTOR.error)}</p>`:''}
+    <div style="display:flex;gap:8px;margin-top:10px"><input id="tq" placeholder="Ask your tutor…" style="flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 12px" ${TUTOR.busy?'disabled':''} onkeydown="if(event.key==='Enter')sendTutor()"><button class="btn p" ${TUTOR.busy?'disabled':''} onclick="sendTutor()">Send</button></div>
+    <p class="faint" style="font-size:11.5px;margin-top:10px">${live? "Connected to a real AI tutor — its replies are based only on this student's actual quiz results, nothing made up." : 'Demo note: replies here follow simple built-in rules, not a live AI. Connect a backend (⇄ above) to use the real AI Tutor.'}</p>
+  `)}`;
+}
+function setTutorTopic(t){ TUTOR.topic=t; TUTOR.turn=0; TUTOR.msgs=[]; render(); }
+function setTutorMode(m){ TUTOR.mode=m; TUTOR.turn=0; render(); }
+function sendTutor(){
+  const el = document.getElementById('tq'); const text = el && el.value.trim();
+  if (effectiveMode()==='demo') {
+    if(text) TUTOR.msgs.push({role:'user', text});
+    const reply = tutorReply(STUDENTS[currentId], TUTOR.topic, TUTOR.mode, TUTOR.turn);
+    TUTOR.msgs.push({role:'assistant', text:reply});
+    TUTOR.turn++; render();
+    const b = document.getElementById('tq'); if(b) { b.value=''; b.focus(); }
+    return;
+  }
+  if(!text || TUTOR.busy) return;
+  const history = TUTOR.msgs.map(m=>({role:m.role, content:m.text}));
+  TUTOR.msgs.push({role:'user', text}); TUTOR.busy=true; TUTOR.error=null; render();
+  (async ()=>{
+    try {
+      const r = await callFn('ai-tutor', {method:'POST', body:{message:text, history, mode:TUTOR.mode}});
+      TUTOR.msgs.push({role:'assistant', text:r.reply||'(no reply)'});
+    } catch(e) { TUTOR.error = e.message; }
+    TUTOR.busy = false; render();
+    const b = document.getElementById('tq'); if(b) { b.value=''; b.focus(); }
+  })();
+}
+
+function settingsPage(){
+  if (effectiveMode()==='live') {
+    return panel('Connected', `<p>Signed in as <b>${esc(LIVE.user.email)}</b>, backend <span class="mu">${esc(LIVE.url)}</span>.</p><button class="btn" onclick="disconnectBackend()">Disconnect &amp; return to demo mode</button>`);
+  }
+  const connected = !!LIVE.sb;
+  return panel('Connect to a real backend', `
+    <p class="mu" style="font-size:13px;line-height:1.6">Demo mode (the default) needs nothing and runs entirely in this browser. To run against the real Supabase project and Edge Functions described in the project download's <code>/backend</code> and <code>/database</code> folders, paste its details below.</p>
+    ${!connected ? `
+      <label style="display:block;margin:10px 0 4px" class="mu">Project URL</label>
+      <input id="be-url" placeholder="https://xxxx.supabase.co" style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
+      <label style="display:block;margin:10px 0 4px" class="mu">Anon (public) key</label>
+      <input id="be-anon" placeholder="eyJ... or sb_publishable_..." style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
+      ${LIVE.error?`<p role="alert" style="color:var(--coral);margin-top:8px">${esc(LIVE.error)}</p>`:''}
+      <button class="btn p" style="margin-top:12px" onclick="connectBackend()">Save and continue</button>
+    ` : `
+      <p style="margin-top:10px">Connected to <span class="mu">${esc(LIVE.url)}</span>. ${LIVE.authMode==='in'?'Sign in':'Create an account'} with a demo login (or your own).</p>
+      <label style="display:block;margin:10px 0 4px" class="mu">Email</label>
+      <input id="be-em" type="email" placeholder="aarav@demo.com" style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
+      <label style="display:block;margin:10px 0 4px" class="mu">Password</label>
+      <input id="be-pw" type="password" placeholder="Demo@123" style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 12px" onkeydown="if(event.key==='Enter')liveAuth()">
+      ${LIVE.error?`<p role="alert" style="color:${LIVE.error.startsWith('Account created')?'var(--teal)':'var(--coral)'};margin-top:8px">${esc(LIVE.error)}</p>`:''}
+      <div style="margin-top:12px;display:flex;gap:8px"><button class="btn p" ${LIVE.busy?'disabled':''} onclick="liveAuth()">${LIVE.busy?(LIVE.authMode==='in'?'Signing in…':'Creating…'):(LIVE.authMode==='in'?'Sign in':'Create account')}</button>
+      <button class="btn" ${LIVE.busy?'disabled':''} onclick="LIVE.authMode=LIVE.authMode==='in'?'up':'in';render()">${LIVE.authMode==='in'?'Create account instead':'Back to sign in'}</button>
+      <button class="btn" onclick="clearBackendConfig();LIVE.sb=null;LIVE.url='';LIVE.anon='';render()">Change project</button></div>
+    `}
+  `);
+}
+
+const PAGES = {agent:agentPage, dash:dashPage, gaps:gapsPage, quiz:quizPage, tutor:tutorPage, settings:settingsPage};
+
+function switchStudent(id){ if(id===currentId) return; bootStudent(id, true); view='agent'; render(); }
+function reRunAgent(){
+  if (effectiveMode()==='live') {
+    (async ()=>{ try { await loadLiveTopicsAndAgent('manual re-run requested'); } catch(e){ LIVE.error=e.message; } render(); })();
+    return;
+  }
+  const s = STUDENTS[currentId];
+  const {topics, action, entries} = runAgentCycle(s, "manual re-run requested");
+  LAST_TOPICS = topics; LAST_ACTION = action;
+  AGENT_LOG = entries.concat(AGENT_LOG).slice(0,60);
+  render();
+}
+function go(v){
+  view=v;
+  if(v==='quiz'){
+    if (effectiveMode()==='live') loadLiveQuizList();
+    else { QUIZ = {phase:'list', topic:null, qs:[], ans:{}, list:Object.keys(QUIZ_BANK).map(t=>({topic:t,id:t})), error:null, result:null}; render(); }
+    return;
+  }
+  render();
+}
+
+function render(){
+  const r = document.getElementById('root');
+  const navHtml = NAV.map(([id,label,path])=>`
+    <div class="item ${id===view?'on':''}" tabindex="0" onclick="go('${id}')" onkeydown="if(event.key==='Enter')go('${id}')">
+      <svg viewBox="0 0 24 24"><path d="${path}"/></svg><span>${label}</span>
+    </div>`).join('');
+  const em = effectiveMode();
+  r.innerHTML = `
+  <div class="shell">
+    <div class="rail">
+      <div class="mark">SP</div>
+      <nav>${navHtml}</nav>
+      <div class="pulse"><i style="background:${em==='live'?'var(--teal)':'var(--amber)'}"></i><small>${em==='live'?'LIVE BACKEND':'DEMO MODE'}</small></div>
+    </div>
+    <main>
+      <div class="pagehead">
+        <div><h1>${NAV.find(n=>n[0]===view)[1]}</h1><div class="sub">${em==='live'?esc(personName())+' · '+esc(personLevel()):esc(STUDENTS[currentId].name)+' · '+esc(STUDENTS[currentId].level)}</div></div>
+        ${studentPicker()}
+      </div>
+      ${PAGES[view]()}
+    </main>
+  </div>`;
+}
+render();
+tryRestoreLiveSession();
+</script>
+</body>
+</html>
